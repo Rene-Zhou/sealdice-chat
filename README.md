@@ -1,6 +1,6 @@
-# 海豹骰子AI聊天机器人插件
+# 海豹骰AI聊天机器人插件
 
-这是一个为海豹骰子开发的AI聊天机器人插件，采用前后端分离架构，支持通过`.chat`命令与AI大语言模型进行交流。
+这是一个为海豹骰开发的AI聊天机器人插件，采用前后端分离架构，支持通过`.chat`命令与AI大语言模型进行交流。
 
 ## 功能特性
 
@@ -25,9 +25,7 @@ Dice/
 │   ├── env_example.txt     # 环境变量示例
 │   ├── README_DASHSCOPE.md # DashScope配置说明
 │   └── PM2_GUIDE.md        # PM2部署指南
-├── examples/               # 示例文件
 ├── chat.js                # 海豹JS插件主文件
-├── 技术文档.md            # 技术文档
 └── README.md              # 本文件
 ```
 
@@ -47,7 +45,7 @@ Dice/
    cp env_example.txt .env
    
    # 编辑.env文件，设置你的API密钥
-   # 必须配置: DASHSCOPE_API_KEY
+   # 参考env_example.txt中的配置说明
    ```
 
 3. **启动后端服务**
@@ -150,17 +148,9 @@ API根路径
 
 ## 配置说明
 
-### 后端配置（.env文件）
+### 后端配置
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `DASHSCOPE_API_KEY` | 阿里云DashScope API密钥（必填） | - |
-| `DASHSCOPE_MODEL` | 使用的通义千问模型 | `qwen-turbo` |
-| `HOST` | 服务绑定地址 | `0.0.0.0` |
-| `PORT` | 服务端口 | `1478` |
-| `MAX_CONVERSATION_HISTORY` | 最大对话历史条数 | `20` |
-| `MAX_MESSAGE_LENGTH` | 最大消息长度 | `2000` |
-| `SYSTEM_PROMPT` | 系统提示词 | 默认TRPG助手设定 |
+详细配置说明请参考 `backend/env_example.txt` 文件。
 
 #### 支持的模型
 - `qwen-turbo` - 通义千问Turbo（推荐，快速响应）
@@ -262,8 +252,7 @@ pm2 logs seal-dice-chatbot
 如需扩展功能，可以：
 1. 在后端添加新的API端点
 2. 在前端添加对应的命令处理
-3. 参考`技术文档.md`了解详细架构
-4. 查看`backend/README_DASHSCOPE.md`了解DashScope集成细节
+3. 查看`backend/README_DASHSCOPE.md`了解DashScope集成细节
 
 ### 版本历史
 
@@ -281,6 +270,5 @@ Apache-2.0 License
 
 ## 相关文档
 
-- [技术文档](技术文档.md) - 详细的技术架构说明
 - [DashScope配置指南](backend/README_DASHSCOPE.md) - DashScope API配置详解
 - [PM2部署指南](backend/PM2_GUIDE.md) - 生产环境部署说明
