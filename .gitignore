@@ -1,0 +1,5 @@
+.env
+examples/
+seal.d.ts
+.venv/
+技术文档.md
