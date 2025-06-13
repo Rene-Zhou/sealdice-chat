@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [2.0.0] - 2024-12-19
+
+### 重大变更 - ⚠️ 破坏性更新
+- 🔄 **API重构**: 从OpenAI API迁移到阿里云DashScope API（通义千问）
+- 🔧 **配置变更**: `OPENAI_API_KEY` → `DASHSCOPE_API_KEY`
+- 🔧 **模型配置**: `OPENAI_MODEL` → `DASHSCOPE_MODEL`
+
+### 新增
+- 🧠 **通义千问支持**: 支持qwen-turbo、qwen-plus、qwen-max、qwen-max-longcontext模型
+- 📚 **模型选择**: 可根据需求选择不同性能等级的模型
+- 🌐 **本土化**: 使用国内API服务，更稳定的网络连接
+
+### 变更
+- 📦 **依赖更新**: 替换`openai`为`dashscope`包
+- 🔧 **配置系统**: 更新环境变量配置项
+- 📖 **文档更新**: 全面更新README和技术文档
+
+### 移除
+- ❌ **OpenAI支持**: 不再支持OpenAI官方API
+- ❌ **Azure OpenAI**: 不再支持Azure OpenAI服务
+
+### 迁移指南
+如果您正在从v1.x版本升级：
+1. 修改`.env`文件中的配置项名称
+2. 获取DashScope API密钥并配置
+3. 选择合适的通义千问模型
+4. 更新Python依赖包
+
 ## [1.0.0] - 2024-06-13
 
 ### 新增

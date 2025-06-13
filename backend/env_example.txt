@@ -1,11 +1,12 @@
-# OpenAI API配置
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-3.5-turbo
+# DashScope API配置
+DASHSCOPE_API_KEY=your_dashscope_api_key_here
+DASHSCOPE_MODEL=qwen-turbo
 
-# 如果使用其他兼容OpenAI的API服务，请修改以下配置
-# OPENAI_BASE_URL=https://your-custom-api.com/v1
-# OPENAI_MODEL=your-model-name
+# 支持的模型包括:
+# qwen-turbo        - 通义千问Turbo（推荐）
+# qwen-plus         - 通义千问Plus
+# qwen-max          - 通义千问Max
+# qwen-max-longcontext - 通义千问Max长文本
 
 # 服务配置
 HOST=0.0.0.0

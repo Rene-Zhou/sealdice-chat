@@ -1,11 +1,14 @@
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# 加载.env文件
+load_dotenv()
 
 class Config:
-    # OpenAI API配置
-    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+    # DashScope API配置
+    DASHSCOPE_API_KEY: Optional[str] = os.getenv("DASHSCOPE_API_KEY")
+    DASHSCOPE_MODEL: str = os.getenv("DASHSCOPE_MODEL", "qwen-turbo")
     
     # 服务配置
     HOST: str = os.getenv("HOST", "0.0.0.0")

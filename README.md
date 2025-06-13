@@ -8,7 +8,7 @@
 - 💾 **对话记忆**: 自动维护每个用户和群组的对话历史
 - 🔄 **历史管理**: 支持`.chat clear`清除对话历史
 - 🏥 **健康检查**: 支持`.chat status`检查服务状态
-- 🔧 **易于配置**: 支持多种OpenAI兼容的API服务
+- 🔧 **易于配置**: 支持阿里云DashScope API（通义千问系列模型）
 - 🛡️ **错误处理**: 完善的错误处理和重试机制
 
 ## 项目结构
@@ -44,7 +44,7 @@ Dice/
    cp env_example.txt .env
    
    # 编辑.env文件，设置你的API密钥
-   # 必须配置: OPENAI_API_KEY
+   # 必须配置: DASHSCOPE_API_KEY
    ```
 
 3. **启动后端服务**
@@ -88,14 +88,19 @@ Dice/
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `OPENAI_API_KEY` | OpenAI API密钥（必填） | - |
-| `OPENAI_BASE_URL` | API端点地址 | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | 使用的模型 | `gpt-3.5-turbo` |
+| `DASHSCOPE_API_KEY` | 阿里云DashScope API密钥（必填） | - |
+| `DASHSCOPE_MODEL` | 使用的通义千问模型 | `qwen-turbo` |
 | `HOST` | 服务绑定地址 | `0.0.0.0` |
 | `PORT` | 服务端口 | `1478` |
 | `MAX_CONVERSATION_HISTORY` | 最大对话历史条数 | `20` |
 | `MAX_MESSAGE_LENGTH` | 最大消息长度 | `2000` |
 | `SYSTEM_PROMPT` | 系统提示词 | 默认TRPG助手设定 |
+
+#### 支持的模型
+- `qwen-turbo` - 通义千问Turbo（推荐）
+- `qwen-plus` - 通义千问Plus
+- `qwen-max` - 通义千问Max  
+- `qwen-max-longcontext` - 通义千问Max长文本
 
 ### 前端配置（chat.js）
 
@@ -107,15 +112,16 @@ const CONFIG = {
 };
 ```
 
-## 兼容的API服务
+## 支持的AI服务
 
-本插件兼容OpenAI API格式的所有服务，包括但不限于：
+本插件使用阿里云DashScope API，支持通义千问系列模型：
 
-- **OpenAI官方API** - GPT-3.5, GPT-4
-- **Azure OpenAI** - 微软Azure平台
-- **其他兼容服务** - 如各种本地部署的模型服务
+- **通义千问Turbo** - 快速响应，适合日常对话
+- **通义千问Plus** - 平衡性能与质量
+- **通义千问Max** - 最高质量，复杂推理
+- **通义千问Max长文本** - 支持长文本处理
 
-只需要修改`OPENAI_BASE_URL`和`OPENAI_MODEL`配置即可。
+如需使用DashScope API，请前往[阿里云DashScope控制台](https://dashscope.console.aliyun.com/)获取API密钥。
 
 ## 故障排除
 
@@ -127,8 +133,8 @@ const CONFIG = {
    - 使用`.chat status`检查服务状态
 
 2. **API密钥错误**
-   - 确认`.env`文件中的`OPENAI_API_KEY`配置正确
-   - 检查API密钥是否有效且有足够余额
+   - 确认`.env`文件中的`DASHSCOPE_API_KEY`配置正确
+   - 检查API密钥是否有效且有足够余额或额度
 
 3. **插件加载失败**
    - 检查JavaScript语法是否正确

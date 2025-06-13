@@ -33,7 +33,7 @@ def check_env_file():
     if not env_file.exists():
         if env_example.exists():
             print("⚠️  未找到.env文件，请复制env_example.txt为.env并配置相关参数")
-            print("   特别是OPENAI_API_KEY等关键配置")
+            print("   特别是DASHSCOPE_API_KEY等关键配置")
         else:
             print("⚠️  未找到环境配置文件")
         return False
@@ -42,8 +42,8 @@ def check_env_file():
     try:
         with open(env_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            if 'your_openai_api_key_here' in content:
-                print("⚠️  请在.env文件中配置正确的API密钥")
+            if 'your_dashscope_api_key_here' in content:
+                print("⚠️  请在.env文件中配置正确的DashScope API密钥")
                 return False
     except Exception as e:
         print(f"⚠️  读取.env文件失败: {e}")

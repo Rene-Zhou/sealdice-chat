@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Optional
-import openai
+import dashscope
 from config import config
 import logging
 import time
@@ -22,11 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 配置OpenAI客户端
-client = openai.OpenAI(
-    api_key=config.OPENAI_API_KEY,
-    base_url=config.OPENAI_BASE_URL
-)
+# 配置DashScope API Key
+dashscope.api_key = config.DASHSCOPE_API_KEY
 
 # 存储对话历史 {user_id: {conversation_id: [messages]}}
 conversation_store: Dict[str, Dict[str, List[Dict]]] = {}
@@ -84,7 +81,7 @@ async def health_check():
     """健康检查接口"""
     try:
         # 简单的API连通性检查
-        if config.OPENAI_API_KEY:
+        if config.DASHSCOPE_API_KEY:
             return {"status": "healthy", "api_configured": True}
         else:
             return {"status": "healthy", "api_configured": False, "warning": "API密钥未配置"}
@@ -104,7 +101,7 @@ async def chat(request: ChatRequest):
             raise HTTPException(status_code=400, detail="消息过长")
         
         # 检查API密钥
-        if not config.OPENAI_API_KEY:
+        if not config.DASHSCOPE_API_KEY:
             raise HTTPException(status_code=500, detail="API密钥未配置")
         
         logger.info(f"收到用户 {request.user_id} 的消息: {request.message[:50]}...")
@@ -121,15 +118,21 @@ async def chat(request: ChatRequest):
         add_message_to_history(request.user_id, request.conversation_id, "user", request.message)
         history = get_conversation_history(request.user_id, request.conversation_id)
         
-        # 调用OpenAI API
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
+        # 调用DashScope API
+        from dashscope import Generation
+        
+        response = Generation.call(
+            model=config.DASHSCOPE_MODEL,
             messages=history,
             max_tokens=1000,
-            temperature=0.7
+            temperature=0.7,
+            result_format='message'
         )
         
-        ai_reply = response.choices[0].message.content
+        if response.status_code == 200:
+            ai_reply = response.output.choices[0].message.content
+        else:
+            raise Exception(f"DashScope API调用失败: {response.message}")
         
         # 添加AI回复到历史
         add_message_to_history(request.user_id, request.conversation_id, "assistant", ai_reply)
