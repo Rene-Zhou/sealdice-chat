@@ -83,6 +83,8 @@ Dice/
 ```
 .chat help    # 查看帮助信息
 .chat test    # 测试AI服务连接
+.chat clear   # 清除对话历史
+.chat list    # 查看对话列表
 ```
 
 ## 配置

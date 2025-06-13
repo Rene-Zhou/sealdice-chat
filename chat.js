@@ -67,13 +67,20 @@ try {
 .chat help - 查看帮助信息
 .chat test - 测试AI服务连接
 
+历史管理：
+.chat clear - 清除当前对话历史
+.chat list - 查看对话列表和统计
+
 使用示例：
 .chat 你好，请介绍一下TRPG
 .chat 帮我生成一个法师角色
 .chat 解释一下DND5E的先攻规则
+.chat clear - 清除历史重新开始
+.chat list - 查看所有对话
 
 功能特性：
 • 智能对话：AI能记住对话历史，提供连续对话
+• 历史管理：支持清除对话历史和查看对话列表
 • 多用户支持：每个用户独立的对话上下文
 • 群组支持：群组对话有独立的上下文记录
 • TRPG专业：针对桌游场景优化的AI助手
@@ -138,6 +145,88 @@ try {
             } catch (error) {
               console.log('连接测试错误:', error);
               seal.replyToSender(ctx, msg, `连接测试失败\n错误：${error.message}\n请检查：\n1. 后端服务是否启动\n2. API地址是否正确\n3. 网络连接是否正常`);
+            }
+          })();
+          return seal.ext.newCmdExecuteResult(true);
+        }
+
+        case 'clear':
+        case '清除':
+        case '清除历史': {
+          seal.replyToSender(ctx, msg, '正在清除对话历史...');
+          // 清除对话历史
+          (async () => {
+            try {
+              const clearData = {
+                user_id: userId,
+                conversation_id: conversationId
+              };
+              
+              const response = await fetch(`${CONFIG.API_BASE_URL}/clear_history`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(clearData)
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.success) {
+                  seal.replyToSender(ctx, msg, `✅ ${data.message || '对话历史已清除'}\n\n现在可以开始新的对话了！`);
+                } else {
+                  const errorMsg = (data && data.message) || '清除失败';
+                  seal.replyToSender(ctx, msg, `❌ 清除历史失败：${errorMsg}`);
+                }
+              } else {
+                seal.replyToSender(ctx, msg, `❌ 清除历史失败：HTTP ${response.status}\n请检查后端服务状态`);
+              }
+            } catch (error) {
+              console.log('清除历史错误:', error);
+              seal.replyToSender(ctx, msg, `❌ 清除历史失败\n错误：${error.message}\n请检查网络连接和后端服务`);
+            }
+          })();
+          return seal.ext.newCmdExecuteResult(true);
+        }
+
+        case 'list':
+        case '列表':
+        case '对话列表': {
+          seal.replyToSender(ctx, msg, '正在获取对话列表...');
+          // 获取对话列表
+          (async () => {
+            try {
+              const response = await fetch(`${CONFIG.API_BASE_URL}/conversations/${encodeURIComponent(userId)}`);
+              
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.conversations) {
+                  const conversations = data.conversations;
+                  if (Object.keys(conversations).length === 0) {
+                    seal.replyToSender(ctx, msg, '📋 暂无对话记录\n\n使用 .chat <消息> 开始新的对话');
+                  } else {
+                    let listMsg = '📋 对话列表：\n\n';
+                    for (const [convId, messageCount] of Object.entries(conversations)) {
+                      let displayName = convId;
+                      if (convId === 'private') {
+                        displayName = '私聊';
+                      } else if (convId.startsWith('group_')) {
+                        displayName = `群组 ${convId.replace('group_', '')}`;
+                      }
+                      listMsg += `• ${displayName}: ${messageCount} 条消息\n`;
+                    }
+                    listMsg += '\n💡 使用 .chat clear 可以清除当前对话历史';
+                    seal.replyToSender(ctx, msg, listMsg);
+                  }
+                } else {
+                  seal.replyToSender(ctx, msg, '❌ 获取对话列表失败：响应格式错误');
+                }
+              } else {
+                seal.replyToSender(ctx, msg, `❌ 获取对话列表失败：HTTP ${response.status}\n请检查后端服务状态`);
+              }
+            } catch (error) {
+              console.log('获取对话列表错误:', error);
+              seal.replyToSender(ctx, msg, `❌ 获取对话列表失败\n错误：${error.message}\n请检查网络连接和后端服务`);
             }
           })();
           return seal.ext.newCmdExecuteResult(true);
@@ -255,6 +344,8 @@ try {
     console.log('使用方法:');
     console.log('- .chat <消息> - 与AI对话');
     console.log('- .chat test - 测试连接');
+    console.log('- .chat clear - 清除对话历史');
+    console.log('- .chat list - 查看对话列表');
     console.log('- .chat help - 查看帮助');
   } else {
     throw new Error('无法注册命令');
