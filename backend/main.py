@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import dashscope
 from config import config
 import logging
@@ -115,7 +115,7 @@ def clear_conversation_history(conversation_id: str):
     if conversation_id in conversation_store:
         conversation_store[conversation_id] = []
 
-def parse_task_info(ai_response: str) -> tuple[str, Optional[Dict]]:
+def parse_task_info(ai_response: str) -> Tuple[str, Optional[Dict]]:
     """解析AI回复中的任务信息"""
     try:
         # 查找任务检测标记
