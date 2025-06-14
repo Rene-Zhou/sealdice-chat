@@ -25,11 +25,12 @@ app.add_middleware(
 # 配置DashScope API Key
 dashscope.api_key = config.DASHSCOPE_API_KEY
 
-# 存储对话历史 {user_id: {conversation_id: [messages]}}
-conversation_store: Dict[str, Dict[str, List[Dict]]] = {}
+# 存储对话历史 {conversation_id: [messages]}
+conversation_store: Dict[str, List[Dict]] = {}
 
 class ChatRequest(BaseModel):
     user_id: str
+    user_name: str = ""
     message: str
     conversation_id: str = "default"
 
@@ -39,25 +40,31 @@ class ChatResponse(BaseModel):
     error: Optional[str] = None
 
 class ClearHistoryRequest(BaseModel):
-    user_id: str
     conversation_id: str = "default"
 
 class ClearHistoryResponse(BaseModel):
     success: bool
     message: str
 
-def get_conversation_history(user_id: str, conversation_id: str) -> List[Dict]:
-    """获取用户对话历史"""
-    if user_id not in conversation_store:
-        conversation_store[user_id] = {}
-    if conversation_id not in conversation_store[user_id]:
-        conversation_store[user_id][conversation_id] = []
-    return conversation_store[user_id][conversation_id]
+def get_conversation_history(conversation_id: str) -> List[Dict]:
+    """获取对话历史"""
+    if conversation_id not in conversation_store:
+        conversation_store[conversation_id] = []
+    return conversation_store[conversation_id]
 
-def add_message_to_history(user_id: str, conversation_id: str, role: str, content: str):
+def add_message_to_history(conversation_id: str, role: str, content: str, user_id: str = "", user_name: str = ""):
     """添加消息到对话历史"""
-    history = get_conversation_history(user_id, conversation_id)
-    history.append({"role": role, "content": content})
+    history = get_conversation_history(conversation_id)
+    message_data = {"role": role, "content": content}
+    
+    # 如果是用户消息，添加用户信息
+    if role == "user" and user_id:
+        if user_name:
+            message_data["content"] = f"[用户 {user_name}({user_id})]: {content}"
+        else:
+            message_data["content"] = f"[用户 {user_id}]: {content}"
+    
+    history.append(message_data)
     
     # 限制历史记录长度
     if len(history) > config.MAX_CONVERSATION_HISTORY:
@@ -65,12 +72,12 @@ def add_message_to_history(user_id: str, conversation_id: str, role: str, conten
         system_messages = [msg for msg in history if msg["role"] == "system"]
         recent_messages = history[-config.MAX_CONVERSATION_HISTORY:]
         history = system_messages + recent_messages
-        conversation_store[user_id][conversation_id] = history
+        conversation_store[conversation_id] = history
 
-def clear_conversation_history(user_id: str, conversation_id: str):
-    """清除用户对话历史"""
-    if user_id in conversation_store and conversation_id in conversation_store[user_id]:
-        conversation_store[user_id][conversation_id] = []
+def clear_conversation_history(conversation_id: str):
+    """清除对话历史"""
+    if conversation_id in conversation_store:
+        conversation_store[conversation_id] = []
 
 @app.get("/")
 async def root():
@@ -107,16 +114,16 @@ async def chat(request: ChatRequest):
         logger.info(f"收到用户 {request.user_id} 的消息: {request.message[:50]}...")
         
         # 获取对话历史
-        history = get_conversation_history(request.user_id, request.conversation_id)
+        history = get_conversation_history(request.conversation_id)
         
         # 如果是新对话，添加系统提示
         if not history:
-            add_message_to_history(request.user_id, request.conversation_id, "system", config.SYSTEM_PROMPT)
-            history = get_conversation_history(request.user_id, request.conversation_id)
+            add_message_to_history(request.conversation_id, "system", config.SYSTEM_PROMPT)
+            history = get_conversation_history(request.conversation_id)
         
         # 添加用户消息
-        add_message_to_history(request.user_id, request.conversation_id, "user", request.message)
-        history = get_conversation_history(request.user_id, request.conversation_id)
+        add_message_to_history(request.conversation_id, "user", request.message, request.user_id, request.user_name)
+        history = get_conversation_history(request.conversation_id)
         
         # 调用DashScope API
         from dashscope import Generation
@@ -135,7 +142,7 @@ async def chat(request: ChatRequest):
             raise Exception(f"DashScope API调用失败: {response.message}")
         
         # 添加AI回复到历史
-        add_message_to_history(request.user_id, request.conversation_id, "assistant", ai_reply)
+        add_message_to_history(request.conversation_id, "assistant", ai_reply)
         
         logger.info(f"AI回复用户 {request.user_id}: {ai_reply[:50]}...")
         
@@ -151,22 +158,20 @@ async def chat(request: ChatRequest):
 async def clear_history(request: ClearHistoryRequest):
     """清除对话历史"""
     try:
-        logger.info(f"清除用户 {request.user_id} 的对话历史")
-        clear_conversation_history(request.user_id, request.conversation_id)
+        logger.info(f"清除对话历史")
+        clear_conversation_history(request.conversation_id)
         return ClearHistoryResponse(success=True, message="对话历史已清除")
     except Exception as e:
         logger.error(f"清除历史错误: {e}")
         return ClearHistoryResponse(success=False, message=f"清除失败: {str(e)}")
 
-@app.get("/conversations/{user_id}")
-async def get_conversations(user_id: str):
-    """获取用户的所有对话"""
-    if user_id in conversation_store:
-        conversations = {}
-        for conv_id, messages in conversation_store[user_id].items():
-            conversations[conv_id] = len(messages)
-        return {"conversations": conversations}
-    return {"conversations": {}}
+@app.get("/conversations")
+async def get_conversations():
+    """获取所有对话列表"""
+    conversations = {}
+    for conv_id, messages in conversation_store.items():
+        conversations[conv_id] = len(messages)
+    return {"conversations": conversations}
 
 if __name__ == "__main__":
     import uvicorn

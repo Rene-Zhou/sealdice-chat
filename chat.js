@@ -1,27 +1,32 @@
 // ==UserScript==
 // @name         AI聊天机器人
 // @author       Rene
-// @version      1.1.0
-// @description  通过.chat命令与AI大语言模型交流，支持连续对话
+// @version      1.2.0
+// @description  群组共享对话历史的AI聊天机器人，支持用户识别
 // @license      Apache-2
 // ==/UserScript==
 
 /*
-AI聊天机器人插件 - 增强版本
+AI聊天机器人插件 - 群组共享版本
 功能：
 - .chat <消息> - 与AI对话
 - .chat help - 查看帮助信息
 - .chat test - 测试连接
+- .chat clear - 清除对话历史
+- .chat list - 查看对话列表
 
-需要配置后端API地址和密钥
-支持连续对话，AI能记住对话历史
+特性：
+- 群组内所有成员共享对话历史
+- AI能识别不同用户的发言
+- 私聊时每个用户独立历史
+- 支持连续对话上下文
 */
 
 try {
   // 创建扩展
   let ext = seal.ext.find('ai-chat');
   if (!ext) {
-    ext = seal.ext.new('ai-chat', 'Rene', '1.1.0');
+    ext = seal.ext.new('ai-chat', 'Rene', '1.2.0');
     seal.ext.register(ext);
   }
 
@@ -57,10 +62,21 @@ try {
     }
   }
 
+  // 工具函数：安全的获取用户名
+  function getUserName(ctx) {
+    try {
+      if (!ctx || !ctx.player) return 'unknown';
+      return ctx.player.name || 'unknown';
+    } catch (error) {
+      console.log('获取用户名失败:', error);
+      return 'unknown';
+    }
+  }
+
   // 创建聊天指令
   const cmdChat = seal.ext.newCmdItemInfo();
   cmdChat.name = 'chat';
-  cmdChat.help = `AI聊天机器人 v1.1.0 - 基于阿里云通义千问
+  cmdChat.help = `AI聊天机器人 v1.2.0 - 基于阿里云通义千问
   
 基本功能：
 .chat <消息> - 与AI对话，支持连续对话上下文
@@ -68,8 +84,8 @@ try {
 .chat test - 测试AI服务连接
 
 历史管理：
-.chat clear - 清除当前对话历史
-.chat list - 查看对话列表和统计
+.chat clear - 清除当前会话的对话历史
+.chat list - 查看所有对话列表和统计
 
 使用示例：
 .chat 你好，请介绍一下TRPG
@@ -80,10 +96,16 @@ try {
 
 功能特性：
 • 智能对话：AI能记住对话历史，提供连续对话
+• 群组共享：同一群组所有成员共享对话历史
+• 用户识别：AI能识别不同用户的发言
 • 历史管理：支持清除对话历史和查看对话列表
-• 多用户支持：每个用户独立的对话上下文
-• 群组支持：群组对话有独立的上下文记录
 • TRPG专业：针对桌游场景优化的AI助手
+
+工作原理：
+• 群组内所有成员共享同一个对话历史记录
+• 每个用户的消息都会标记用户身份
+• 私聊时每个用户有独立的对话历史
+• AI能够区分和回应不同用户的消息
 
 技术支持：
 • 后端：Python FastAPI + 阿里云DashScope
@@ -157,8 +179,8 @@ try {
           // 清除对话历史
           (async () => {
             try {
+              const conversationId = getConversationId(ctx);
               const clearData = {
-                user_id: userId,
                 conversation_id: conversationId
               };
               
@@ -196,7 +218,7 @@ try {
           // 获取对话列表
           (async () => {
             try {
-              const response = await fetch(`${CONFIG.API_BASE_URL}/conversations/${encodeURIComponent(userId)}`);
+              const response = await fetch(`${CONFIG.API_BASE_URL}/conversations`);
               
               if (response.ok) {
                 const data = await response.json();
@@ -205,7 +227,7 @@ try {
                   if (Object.keys(conversations).length === 0) {
                     seal.replyToSender(ctx, msg, '📋 暂无对话记录\n\n使用 .chat <消息> 开始新的对话');
                   } else {
-                    let listMsg = '📋 对话列表：\n\n';
+                    let listMsg = '📋 所有对话列表：\n\n';
                     for (const [convId, messageCount] of Object.entries(conversations)) {
                       let displayName = convId;
                       if (convId === 'private') {
@@ -266,8 +288,13 @@ try {
           // 发送聊天请求
           (async () => {
             try {
+              const userId = getUserId(ctx);
+              const userName = getUserName(ctx);
+              const conversationId = getConversationId(ctx);
+              
               const chatData = {
                 user_id: userId,
+                user_name: userName,
                 message: userMessage,
                 conversation_id: conversationId
               };
@@ -335,17 +362,19 @@ try {
   // 注册命令
   if (ext && ext.cmdMap) {
     ext.cmdMap['chat'] = cmdChat;
-    console.log('AI聊天机器人插件加载完成 v1.1.0');
+    console.log('AI聊天机器人插件加载完成 v1.2.0');
     console.log(`API地址: ${CONFIG.API_BASE_URL}`);
     console.log('功能特性:');
+    console.log('- 群组内所有成员共享对话历史');
+    console.log('- AI能识别不同用户的发言');
+    console.log('- 私聊时每个用户独立历史');
     console.log('- 支持连续对话和上下文记忆');
-    console.log('- 多用户和群组独立对话');
     console.log('- 基于阿里云通义千问AI模型');
     console.log('使用方法:');
     console.log('- .chat <消息> - 与AI对话');
     console.log('- .chat test - 测试连接');
-    console.log('- .chat clear - 清除对话历史');
-    console.log('- .chat list - 查看对话列表');
+    console.log('- .chat clear - 清除当前会话历史');
+    console.log('- .chat list - 查看所有对话列表');
     console.log('- .chat help - 查看帮助');
   } else {
     throw new Error('无法注册命令');
