@@ -63,43 +63,10 @@ try {
   }
 
   // 工具函数：安全的获取用户名
-  function getUserName(ctx, msg) {
+  function getUserName(ctx) {
     try {
-      if (!ctx) {
-        console.log('getUserName: ctx为空');
-        return 'unknown';
-      }
-      
-      // 优先从消息发送者中获取昵称
-      if (msg && msg.sender && msg.sender.nickname) {
-        const senderNickname = msg.sender.nickname;
-        console.log(`getUserName: 从消息发送者获取昵称: "${senderNickname}"`);
-        return senderNickname;
-      }
-      
-      // 如果没有ctx.player，返回unknown
-      if (!ctx.player) {
-        console.log('getUserName: ctx.player为空');
-        return 'unknown';
-      }
-      
-      // 尝试获取用户名，打印调试信息
-      const playerName = ctx.player.name;
-      const playerId = ctx.player.userId;
-      console.log(`getUserName: 玩家信息 - name: "${playerName}", userId: "${playerId}"`);
-      
-      // 尝试通过海豹的格式化功能获取用户名
-      try {
-        const formattedName = seal.format(ctx, '{$t玩家}');
-        console.log(`getUserName: 格式化名称: "${formattedName}"`);
-        if (formattedName && formattedName !== '{$t玩家}' && formattedName !== playerName) {
-          return formattedName;
-        }
-      } catch (formatError) {
-        console.log('getUserName: 格式化获取名称失败:', formatError);
-      }
-      
-      return playerName || 'unknown';
+      if (!ctx || !ctx.player) return 'unknown';
+      return ctx.player.name || 'unknown';
     } catch (error) {
       console.log('获取用户名失败:', error);
       return 'unknown';
@@ -322,7 +289,7 @@ try {
           (async () => {
             try {
               const userId = getUserId(ctx);
-              const userName = getUserName(ctx, msg);
+              const userName = getUserName(ctx);
               const conversationId = getConversationId(ctx);
               
               const chatData = {

@@ -111,8 +111,7 @@ async def chat(request: ChatRequest):
         if not config.DASHSCOPE_API_KEY:
             raise HTTPException(status_code=500, detail="API密钥未配置")
         
-        user_display = f"{request.user_name}({request.user_id})" if request.user_name else request.user_id
-        logger.info(f"收到用户 {user_display} 的消息: {request.message[:50]}...")
+        logger.info(f"收到用户 {request.user_id} 的消息: {request.message[:50]}...")
         
         # 获取对话历史
         history = get_conversation_history(request.conversation_id)
@@ -125,11 +124,6 @@ async def chat(request: ChatRequest):
         # 添加用户消息
         add_message_to_history(request.conversation_id, "user", request.message, request.user_id, request.user_name)
         history = get_conversation_history(request.conversation_id)
-        
-        # 记录完整的提示词
-        logger.info(f"发送给AI的完整对话历史 (对话ID: {request.conversation_id}):")
-        for i, msg in enumerate(history):
-            logger.info(f"  [{i+1}] {msg['role']}: {msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}")
         
         # 调用DashScope API
         from dashscope import Generation
@@ -150,7 +144,7 @@ async def chat(request: ChatRequest):
         # 添加AI回复到历史
         add_message_to_history(request.conversation_id, "assistant", ai_reply)
         
-        logger.info(f"AI回复用户 {user_display}: {ai_reply[:50]}...")
+        logger.info(f"AI回复用户 {request.user_id}: {ai_reply[:50]}...")
         
         return ChatResponse(reply=ai_reply, success=True)
         
