@@ -129,7 +129,7 @@ try {
   let registeredTasks = [];
 
   // 工具函数：注册定时任务
-  function registerScheduledTask(ctx, taskInfo) {
+  function registerScheduledTask(ctx, msg, taskInfo) {
     try {
       if (!taskInfo || !taskInfo.task_type || !taskInfo.task_value) {
         console.log('任务信息不完整:', taskInfo);
@@ -139,28 +139,41 @@ try {
       // 生成唯一的任务ID
       const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
+      // 保存原始上下文信息用于任务执行
+      const taskContext = {
+        groupId: ctx.group ? ctx.group.groupId : null,
+        playerId: getUserId(ctx),
+        playerName: getUserName(ctx),
+        isGroup: !!(ctx.group && ctx.group.groupId),
+        originalCtx: ctx,
+        originalMsg: msg
+      };
+
       // 创建任务执行函数
       const taskFunction = (taskCtx) => {
         try {
           console.log(`执行定时任务: ${taskInfo.task_description}`);
           
-          // 构建任务通知消息
-          let notificationMsg = `⏰ 定时任务提醒\n\n`;
-          notificationMsg += `📋 任务描述：${taskInfo.task_description}\n`;
-          notificationMsg += `🎯 任务内容：${taskInfo.task_action}\n`;
-          notificationMsg += `⏰ 执行时间：${new Date().toLocaleString()}\n`;
+          // 构建任务通知消息（简化格式，避免特殊字符问题）
+          let notificationMsg = `[定时任务提醒]\n\n`;
+          notificationMsg += `任务: ${taskInfo.task_description}\n`;
+          notificationMsg += `内容: ${taskInfo.task_action}\n`;
+          notificationMsg += `时间: ${new Date().toLocaleString()}\n`;
           
-          // 发送任务通知
-          if (ctx.group && ctx.group.groupId) {
-            // 群组任务 - 发送到群组
-            seal.replyGroup(ctx, notificationMsg);
+          // 使用保存的原始上下文发送消息
+          // 这是最简单也是最可靠的方式
+          if (taskContext.isGroup && taskContext.groupId) {
+            // 群组任务 - 使用 replyGroup
+            seal.replyGroup(taskContext.originalCtx, taskContext.originalMsg, notificationMsg);
           } else {
-            // 私聊任务 - 发送给用户
-            seal.replyPerson(ctx, notificationMsg);
+            // 私聊任务 - 使用 replyPerson  
+            seal.replyPerson(taskContext.originalCtx, taskContext.originalMsg, notificationMsg);
           }
           
         } catch (error) {
           console.log('执行定时任务失败:', error);
+          // 备用方案：如果上面的方式失败，尝试使用 console.log 至少记录
+          console.log(`定时任务通知: ${taskInfo.task_description} - ${taskInfo.task_action}`);
         }
       };
 
@@ -229,7 +242,7 @@ try {
             console.log('检测到定时任务:', data.task_info);
             
             // 尝试注册定时任务
-            if (registerScheduledTask(ctx, data.task_info)) {
+            if (registerScheduledTask(ctx, msg, data.task_info)) {
               // 任务注册成功，添加成功提示
               const taskSuccessMsg = `\n\n✅ 定时任务创建成功！\n`;
               const taskDetails = `📋 任务类型：${data.task_info.task_type === 'daily' ? '每日任务' : '定时任务'}\n`;
