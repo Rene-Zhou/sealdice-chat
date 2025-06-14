@@ -1,14 +1,14 @@
 // ==UserScript==
-// @name         AI聊天机器人
+// @name         AI聊天机器人 - 定时任务版
 // @author       Rene
-// @version      1.3.0
-// @description  群组共享对话历史的AI聊天机器人，支持用户识别和无指令聊天
+// @version      2.0.0
+// @description  群组共享对话历史的AI聊天机器人，支持用户识别、无指令聊天和智能定时任务
 // @license      Apache-2
 // @timestamp    1749902144
 // ==/UserScript==
 
 /*
-AI聊天机器人插件 - 群组共享版本 v1.3.0
+AI聊天机器人插件 - 群组共享版本 v2.0.0
 功能：
 - .chat <消息> - 与AI对话
 - .chat help - 查看帮助信息
@@ -16,6 +16,7 @@ AI聊天机器人插件 - 群组共享版本 v1.3.0
 - .chat clear - 清除对话历史
 - .chat list - 查看对话列表
 - .chat free [on/off] - 开关无指令聊天功能
+- .chat task list - 查看定时任务列表
 
 特性：
 - 群组内所有成员共享对话历史
@@ -23,13 +24,19 @@ AI聊天机器人插件 - 群组共享版本 v1.3.0
 - 私聊时每个用户独立历史
 - 支持连续对话上下文
 - 支持@骰娘进行无指令聊天
+- 智能识别定时任务需求并自动创建（需要60级或以上权限）
+
+NEW v2.0.0:
+- 自然语言定时任务：AI能理解并创建定时任务
+- 权限管理：60级或以上权限才能创建定时任务
+- 任务管理：支持查看和管理定时任务
 */
 
 try {
   // 创建扩展
   let ext = seal.ext.find('ai-chat');
   if (!ext) {
-    ext = seal.ext.new('ai-chat', 'Rene', '1.3.0');
+    ext = seal.ext.new('ai-chat', 'Rene', '2.0.0');
     seal.ext.register(ext);
   }
 
@@ -76,6 +83,17 @@ try {
     }
   }
 
+  // 工具函数：获取用户权限等级
+  function getUserPermission(ctx) {
+    try {
+      if (!ctx || !ctx.privilegeLevel) return 0;
+      return ctx.privilegeLevel || 0;
+    } catch (error) {
+      console.log('获取用户权限失败:', error);
+      return 0;
+    }
+  }
+
   // 工具函数：获取骰娘QQ号配置
   function getBotQQ() {
     try {
@@ -107,18 +125,91 @@ try {
     }
   }
 
+  // 存储已注册的定时任务信息
+  let registeredTasks = [];
+
+  // 工具函数：注册定时任务
+  function registerScheduledTask(ctx, taskInfo) {
+    try {
+      if (!taskInfo || !taskInfo.task_type || !taskInfo.task_value) {
+        console.log('任务信息不完整:', taskInfo);
+        return false;
+      }
+
+      // 生成唯一的任务ID
+      const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 创建任务执行函数
+      const taskFunction = (taskCtx) => {
+        try {
+          console.log(`执行定时任务: ${taskInfo.task_description}`);
+          
+          // 构建任务通知消息
+          let notificationMsg = `⏰ 定时任务提醒\n\n`;
+          notificationMsg += `📋 任务描述：${taskInfo.task_description}\n`;
+          notificationMsg += `🎯 任务内容：${taskInfo.task_action}\n`;
+          notificationMsg += `⏰ 执行时间：${new Date().toLocaleString()}\n`;
+          
+          // 发送任务通知
+          if (ctx.group && ctx.group.groupId) {
+            // 群组任务 - 发送到群组
+            seal.replyGroup(ctx, notificationMsg);
+          } else {
+            // 私聊任务 - 发送给用户
+            seal.replyPerson(ctx, notificationMsg);
+          }
+          
+        } catch (error) {
+          console.log('执行定时任务失败:', error);
+        }
+      };
+
+      // 注册任务到海豹核心
+      seal.ext.registerTask(
+        ext,
+        taskInfo.task_type,
+        taskInfo.task_value,
+        taskFunction,
+        taskId,
+        taskInfo.task_description
+      );
+
+      // 记录已注册的任务
+      registeredTasks.push({
+        id: taskId,
+        type: taskInfo.task_type,
+        value: taskInfo.task_value,
+        description: taskInfo.task_description,
+        action: taskInfo.task_action,
+        creator: getUserName(ctx),
+        creator_id: getUserId(ctx),
+        conversation_id: getConversationId(ctx),
+        created_at: new Date().toLocaleString()
+      });
+
+      console.log(`定时任务注册成功: ${taskId} - ${taskInfo.task_description}`);
+      return true;
+
+    } catch (error) {
+      console.log('注册定时任务失败:', error);
+      return false;
+    }
+  }
+
   // 发送AI聊天请求的核心函数
   async function sendChatRequest(ctx, msg, userMessage) {
     try {
       const userId = getUserId(ctx);
       const userName = getUserName(ctx);
       const conversationId = getConversationId(ctx);
+      const userPermission = getUserPermission(ctx);
       
       const chatData = {
         user_id: userId,
         user_name: userName,
         message: userMessage,
-        conversation_id: conversationId
+        conversation_id: conversationId,
+        user_permission: userPermission
       };
       
       const response = await fetch(`${CONFIG.API_BASE_URL}/chat`, {
@@ -132,8 +223,29 @@ try {
       if (response.ok) {
         const data = await response.json();
         if (data && data.success && data.reply) {
-          // 直接返回AI回复
-          seal.replyToSender(ctx, msg, data.reply);
+          
+          // 检查是否有定时任务信息
+          if (data.task_info && userPermission >= 60) {
+            console.log('检测到定时任务:', data.task_info);
+            
+            // 尝试注册定时任务
+            if (registerScheduledTask(ctx, data.task_info)) {
+              // 任务注册成功，添加成功提示
+              const taskSuccessMsg = `\n\n✅ 定时任务创建成功！\n`;
+              const taskDetails = `📋 任务类型：${data.task_info.task_type === 'daily' ? '每日任务' : '定时任务'}\n`;
+              const taskTime = `⏰ 执行时间：${data.task_info.task_value}\n`;
+              const taskDesc = `📝 任务描述：${data.task_info.task_description}`;
+              
+              seal.replyToSender(ctx, msg, data.reply + taskSuccessMsg + taskDetails + taskTime + taskDesc);
+            } else {
+              // 任务注册失败
+              seal.replyToSender(ctx, msg, data.reply + '\n\n❌ 定时任务创建失败，请稍后重试。');
+            }
+          } else {
+            // 没有任务信息，直接发送AI回复
+            seal.replyToSender(ctx, msg, data.reply);
+          }
+          
         } else {
           const errorMsg = (data && data.error) || '未知错误';
           seal.replyToSender(ctx, msg, `AI回复失败：${errorMsg}\n\n建议：\n1. 检查API密钥配置\n2. 确认网络连接正常\n3. 使用 .chat test 测试服务`);
@@ -206,7 +318,7 @@ try {
         return;
       }
 
-      // 发送聊天请求
+      // 发送聊天请求（无指令聊天也支持定时任务）
       sendChatRequest(ctx, msg, userMessage);
     }
   };
@@ -214,7 +326,7 @@ try {
   // 创建聊天指令
   const cmdChat = seal.ext.newCmdItemInfo();
   cmdChat.name = 'chat';
-  cmdChat.help = `AI聊天机器人 v1.3.0 - 基于阿里云通义千问
+  cmdChat.help = `AI聊天机器人 v2.0.0 - 基于阿里云通义千问 + 智能定时任务
   
 基本功能：
 .chat <消息> - 与AI对话，支持连续对话上下文
@@ -230,12 +342,19 @@ try {
 .chat free on - 开启无指令聊天（@骰娘直接对话）
 .chat free off - 关闭无指令聊天
 
+定时任务（需要60级或以上权限）：
+.chat task list - 查看已创建的定时任务
+.chat task clear - 清除所有定时任务
+
 使用示例：
 .chat 你好，请介绍一下TRPG
 .chat 帮我生成一个法师角色
 .chat 解释一下DND5E的先攻规则
+.chat 每天早上8点提醒我吃药 - 自然语言定时任务
+.chat 每5分钟提醒我休息 - 定时任务
 .chat clear - 清除历史重新开始
 .chat list - 查看所有对话
+.chat task list - 查看定时任务
 .chat free on - 开启@聊天功能
 @骰娘 你好 - 无指令聊天（需先开启）
 
@@ -245,18 +364,29 @@ try {
 • 用户识别：AI能识别不同用户的发言
 • 历史管理：支持清除对话历史和查看对话列表
 • 无指令聊天：支持@骰娘进行直接对话
+• 智能定时任务：AI能理解自然语言创建定时任务
+• 权限管理：60级或以上权限才能创建定时任务
 • TRPG专业：针对桌游场景优化的AI助手
+
+定时任务示例：
+• "每天早上8点提醒我起床" - 创建每日8:00提醒
+• "每小时提醒我喝水" - 创建每小时提醒
+• "每5分钟检查一下状态" - 创建每5分钟提醒
+• "每天晚上10点提醒我睡觉" - 创建每日22:00提醒
 
 工作原理：
 • 群组内所有成员共享同一个对话历史记录
 • 每个用户的消息都会标记用户身份
 • 私聊时每个用户有独立的对话历史
 • AI能够区分和回应不同用户的消息
+• AI智能识别定时任务需求并自动创建
+• 定时任务按时执行并发送提醒通知
 • 无指令聊天需要配置骰娘QQ号并开启功能
 
 技术支持：
 • 后端：Python FastAPI + 阿里云DashScope
 • 模型：通义千问系列（qwen-turbo/plus/max）
+• 定时任务：基于海豹核心定时任务API
 • 部署：支持开发和生产环境部署`;
 
   cmdChat.solve = (ctx, msg, cmdArgs) => {
@@ -401,6 +531,107 @@ try {
           return seal.ext.newCmdExecuteResult(true);
         }
 
+        case 'task':
+        case '任务':
+        case '定时任务': {
+          const arg2 = cmdArgs.getArgN(2) || '';
+          const userPermission = getUserPermission(ctx);
+          
+          switch (arg2) {
+            case 'list':
+            case '列表':
+            case '查看': {
+              if (registeredTasks.length === 0) {
+                seal.replyToSender(ctx, msg, '📋 暂无已注册的定时任务\n\n💡 你可以通过自然语言与AI对话来创建定时任务，例如：\n• .chat 每天早上8点提醒我起床\n• .chat 每小时提醒我喝水\n\n⚠️ 注意：创建定时任务需要60级或以上权限');
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              let taskListMsg = '📋 已注册的定时任务列表：\n\n';
+              const conversationId = getConversationId(ctx);
+              const relevantTasks = registeredTasks.filter(task => 
+                task.conversation_id === conversationId || 
+                task.creator_id === getUserId(ctx)
+              );
+              
+              if (relevantTasks.length === 0) {
+                taskListMsg += '当前会话/用户暂无定时任务\n\n';
+              } else {
+                relevantTasks.forEach((task, index) => {
+                  taskListMsg += `${index + 1}. ${task.description}\n`;
+                  taskListMsg += `   ⏰ 时间：${task.value}\n`;
+                  taskListMsg += `   📝 类型：${task.type === 'daily' ? '每日任务' : '定时任务'}\n`;
+                  taskListMsg += `   👤 创建者：${task.creator}\n`;
+                  taskListMsg += `   📅 创建时间：${task.created_at}\n\n`;
+                });
+              }
+              
+              taskListMsg += `💡 总共有 ${registeredTasks.length} 个任务在运行\n`;
+              taskListMsg += `📍 当前相关任务：${relevantTasks.length} 个\n\n`;
+              taskListMsg += '🔧 管理命令：\n';
+              taskListMsg += '• .chat task clear - 清除所有任务（需要60级权限）';
+              
+              seal.replyToSender(ctx, msg, taskListMsg);
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            case 'clear':
+            case '清除':
+            case '删除': {
+              if (userPermission < 60) {
+                seal.replyToSender(ctx, msg, '❌ 权限不足\n\n清除定时任务需要60级或以上权限。\n当前权限等级：' + userPermission);
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              if (registeredTasks.length === 0) {
+                seal.replyToSender(ctx, msg, '📋 暂无定时任务需要清除');
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              // 注意：这里只是清除记录，实际的任务清除需要海豹核心支持
+              const taskCount = registeredTasks.length;
+              registeredTasks = [];
+              
+              let clearMsg = `✅ 已清除 ${taskCount} 个定时任务记录\n\n`;
+              clearMsg += '⚠️ 注意：已经运行的定时任务可能需要重启海豹核心才能完全停止。\n\n';
+              clearMsg += '💡 如需重新创建任务，可以通过自然语言与AI对话。';
+              
+              seal.replyToSender(ctx, msg, clearMsg);
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            case '':
+            case 'help':
+            case '帮助': {
+              let taskHelpMsg = '🕐 定时任务功能帮助\n\n';
+              taskHelpMsg += '📋 可用命令：\n';
+              taskHelpMsg += '• .chat task list - 查看定时任务列表\n';
+              taskHelpMsg += '• .chat task clear - 清除所有定时任务\n\n';
+              taskHelpMsg += '🤖 创建任务：\n';
+              taskHelpMsg += '通过自然语言与AI对话即可创建定时任务，AI会自动识别并创建。\n\n';
+              taskHelpMsg += '💡 示例：\n';
+              taskHelpMsg += '• .chat 每天早上8点提醒我起床\n';
+              taskHelpMsg += '• .chat 每小时提醒我喝水\n';
+              taskHelpMsg += '• .chat 每5分钟检查一下状态\n';
+              taskHelpMsg += '• .chat 每天晚上10点提醒我睡觉\n\n';
+              taskHelpMsg += '⚠️ 权限要求：\n';
+              taskHelpMsg += '• 创建定时任务需要60级或以上权限\n';
+              taskHelpMsg += `• 您当前权限等级：${userPermission}\n\n`;
+              taskHelpMsg += '🔧 技术说明：\n';
+              taskHelpMsg += '• 支持每日任务（如：每天8:00）\n';
+              taskHelpMsg += '• 支持Cron表达式任务（如：每5分钟）\n';
+              taskHelpMsg += '• 任务将在指定时间自动发送提醒';
+              
+              seal.replyToSender(ctx, msg, taskHelpMsg);
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            default: {
+              seal.replyToSender(ctx, msg, '❓ 无效的任务命令\n\n用法：\n.chat task - 查看帮助\n.chat task list - 查看任务列表\n.chat task clear - 清除所有任务');
+              return seal.ext.newCmdExecuteResult(true);
+            }
+          }
+        }
+
         case 'free':
         case '自由聊天':
         case '无指令聊天': {
@@ -526,7 +757,7 @@ try {
     seal.ext.registerStringConfig(ext, "bot_qq", "", "骰娘QQ号", "用于无指令聊天功能，填入骰娘的QQ号（纯数字，不带前缀）");
     seal.ext.registerBoolConfig(ext, "free_chat", false, "无指令聊天", "开启后可以通过@骰娘进行无指令聊天");
     
-    console.log('AI聊天机器人插件加载完成 v1.3.0');
+    console.log('AI聊天机器人插件加载完成 v2.0.0 - 支持智能定时任务');
     console.log(`API地址: ${CONFIG.API_BASE_URL}`);
     console.log('功能特性:');
     console.log('- 群组内所有成员共享对话历史');
@@ -534,6 +765,7 @@ try {
     console.log('- 私聊时每个用户独立历史');
     console.log('- 支持连续对话和上下文记忆');
     console.log('- 支持@骰娘进行无指令聊天');
+    console.log('- 智能识别定时任务需求并自动创建');
     console.log('- 基于阿里云通义千问AI模型');
     console.log('使用方法:');
     console.log('- .chat <消息> - 与AI对话');
@@ -541,8 +773,15 @@ try {
     console.log('- .chat clear - 清除当前会话历史');
     console.log('- .chat list - 查看所有对话列表');
     console.log('- .chat free [on/off] - 管理无指令聊天功能');
+    console.log('- .chat task list - 查看定时任务列表');
+    console.log('- .chat task clear - 清除所有定时任务');
     console.log('- @骰娘 <消息> - 无指令聊天（需配置并开启）');
     console.log('- .chat help - 查看帮助');
+    console.log('定时任务示例:');
+    console.log('- .chat 每天早上8点提醒我起床 - 自然语言定时任务');
+    console.log('- .chat 每小时提醒我喝水 - 定时提醒');
+    console.log('- .chat 每5分钟检查状态 - 定期任务');
+    console.log('⚠️ 注意：创建定时任务需要60级或以上权限');
   } else {
     throw new Error('无法注册命令');
   }
