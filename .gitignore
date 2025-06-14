@@ -3,3 +3,5 @@ examples/
 seal.d.ts
 .venv/
 技术文档.md
+backend/logs
+backend/__pycache__
