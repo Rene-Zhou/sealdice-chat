@@ -80,6 +80,7 @@ DashScope支持以下通义千问模型：
 - `qwen-turbo` - 通义千问Turbo（推荐，性价比高）
 - `qwen-plus` - 通义千问Plus（平衡版本）
 - `qwen-max` - 通义千问Max（最强性能）
+- `qwen-max-longcontext` - 通义千问Max长文本版
 
 ## API接口
 
