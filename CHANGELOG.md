@@ -13,7 +13,7 @@
 - 🔧 **模型配置**: `OPENAI_MODEL` → `DASHSCOPE_MODEL`
 
 ### 新增
-- 🧠 **通义千问支持**: 支持qwen-turbo、qwen-plus、qwen-max、qwen-max-longcontext模型
+- 🧠 **通义千问支持**: 支持qwen-turbo、qwen-plus、qwen-max等模型
 - 📚 **模型选择**: 可根据需求选择不同性能等级的模型
 - 🌐 **本土化**: 使用国内API服务，更稳定的网络连接
 

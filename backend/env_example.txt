@@ -1,3 +1,7 @@
+# 基础配置
+HOST=0.0.0.0
+PORT=1478
+
 # DashScope API配置
 DASHSCOPE_API_KEY=your_dashscope_api_key_here
 DASHSCOPE_MODEL=qwen-turbo
@@ -8,13 +12,20 @@ DASHSCOPE_MODEL=qwen-turbo
 # qwen-max          - 通义千问Max
 # qwen-max-longcontext - 通义千问Max长文本
 
-# 服务配置
-HOST=0.0.0.0
-PORT=1478
-
 # 对话配置
 MAX_CONVERSATION_HISTORY=20
 MAX_MESSAGE_LENGTH=2000
 
-# 系统提示词（可选）
-SYSTEM_PROMPT=你是一个友善的AI助手，正在参与TRPG（桌上角色扮演游戏）。请用简洁友好的语言回复用户的问题和对话。 
+# 系统提示词
+SYSTEM_PROMPT=你是一个友善的AI助手，正在参与TRPG（桌上角色扮演游戏）。请用简洁友好的语言回复用户的问题和对话。
+
+# RAG系统配置
+EMBEDDING_MODEL=text-embedding-v4
+EMBEDDING_DIMENSION=1024
+FIVETOOLS_DATA_PATH=./5etools-data
+VECTOR_DB_PATH=./chroma_db
+
+# RAG查询配置
+RAG_SIMILARITY_THRESHOLD=0.6
+RAG_MAX_CONTEXT_LENGTH=4000
+RAG_MAX_RESULTS=10 

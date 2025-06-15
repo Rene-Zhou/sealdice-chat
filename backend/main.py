@@ -9,6 +9,13 @@ import time
 import re
 import json
 
+# RAG系统导入
+from rag.vector_store import FiveToolsVectorStore
+from rag.query_engine import FiveToolsRAG
+from processors.data_processor import FiveToolsProcessor
+from scripts.sync_5etools_data import FiveToolsDataSync
+from utils.cost_monitor import RAGCostMonitor
+
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,6 +37,10 @@ dashscope.api_key = config.DASHSCOPE_API_KEY
 # 存储对话历史 {conversation_id: [messages]}
 conversation_store: Dict[str, List[Dict]] = {}
 
+# 全局RAG系统实例
+rag_system = None
+cost_monitor = RAGCostMonitor()
+
 class ChatRequest(BaseModel):
     user_id: str
     user_name: str = ""
@@ -49,6 +60,18 @@ class ClearHistoryRequest(BaseModel):
 class ClearHistoryResponse(BaseModel):
     success: bool
     message: str
+
+class RAGStatusResponse(BaseModel):
+    status: str
+    vector_count: int
+    last_update: str
+    model_version: str
+
+class RAGUpdateResponse(BaseModel):
+    success: bool
+    documents_processed: Optional[int] = None
+    vectors_created: Optional[int] = None
+    error: Optional[str] = None
 
 # 新增：定时任务相关的提示词
 TASK_DETECTION_SYSTEM_PROMPT = """
@@ -81,6 +104,56 @@ TASK_DETECTION_SYSTEM_PROMPT = """
 如果用户只是普通聊天，则：
 [TASK_DETECTION_START]{"has_task": false, "task_type": null, "task_value": null, "task_description": null, "task_action": null}[TASK_DETECTION_END]
 """
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时初始化RAG系统"""
+    global rag_system
+    
+    try:
+        print("🚀 初始化5e.tools RAG系统...")
+        
+        vector_store = FiveToolsVectorStore(config.VECTOR_DB_PATH)
+        rag_system = FiveToolsRAG(vector_store)
+        
+        # 检查是否需要构建索引
+        try:
+            collections = vector_store.client.list_collections()
+            if not any(c.name == vector_store.collection_name for c in collections):
+                print("📚 首次运行，开始构建向量索引...")
+                await build_vector_index()
+        except:
+            print("📚 构建向量索引...")
+            await build_vector_index()
+        
+        print("✅ RAG系统初始化完成！")
+        
+    except Exception as e:
+        print(f"❌ RAG系统初始化失败: {e}")
+
+async def build_vector_index():
+    """构建向量索引"""
+    try:
+        # 1. 同步数据
+        data_sync = FiveToolsDataSync(config.FIVETOOLS_DATA_PATH)
+        if not data_sync.sync_data():
+            raise Exception("数据同步失败")
+        
+        # 2. 处理数据
+        processor = FiveToolsProcessor()
+        data_files = data_sync.get_data_files()
+        documents = processor.process_all_data(data_files)
+        
+        # 3. 构建索引
+        vector_store = FiveToolsVectorStore(config.VECTOR_DB_PATH)
+        if not vector_store.build_index(documents):
+            raise Exception("向量索引构建失败")
+        
+        print("🎉 向量索引构建完成！")
+        
+    except Exception as e:
+        print(f"❌ 向量索引构建失败: {e}")
+        raise
 
 def get_conversation_history(conversation_id: str) -> List[Dict]:
     """获取对话历史"""
@@ -145,7 +218,12 @@ def parse_task_info(ai_response: str) -> Tuple[str, Optional[Dict]]:
 
 @app.get("/")
 async def root():
-    return {"message": "海豹骰子聊天机器人API v2.0.0 - 支持定时任务", "status": "运行中"}
+    return {
+        "message": "海豹骰子聊天机器人API v2.1.0 - 支持定时任务与RAG知识库", 
+        "status": "运行中",
+        "features": ["聊天对话", "定时任务", "DND5E规则查询", "RAG知识库"],
+        "rag_status": "已启用" if rag_system else "未初始化"
+    }
 
 @app.get("/health")
 async def health_check():
@@ -177,6 +255,38 @@ async def chat(request: ChatRequest):
         
         logger.info(f"收到用户 {request.user_id}(权限:{request.user_permission}) 的消息: {request.message[:50]}...")
         
+        # 判断是否需要RAG增强
+        needs_rag = False
+        rag_info = None
+        enhanced_message = request.message
+        
+        if rag_system:
+            needs_rag = rag_system.should_use_rag(request.message)
+            
+            if needs_rag:
+                # 执行RAG查询
+                category_hint = rag_system.extract_category_hint(request.message)
+                rag_result = await rag_system.query(
+                    question=request.message,
+                    category_hint=category_hint
+                )
+                
+                # 判断是否使用RAG结果
+                if rag_result['confidence'] > 0.5 and rag_result['found_results'] > 0:
+                    enhanced_message = f"""{request.message}
+
+[DND5E规则参考资料]:
+{rag_result['context']}
+
+请基于以上官方规则资料回答问题，如果资料不完整请说明。"""
+                    rag_info = {
+                        'used': True,
+                        'confidence': rag_result['confidence'],
+                        'sources': rag_result['sources']
+                    }
+                else:
+                    rag_info = {'used': False, 'reason': '未找到相关规则资料'}
+        
         # 获取对话历史
         history = get_conversation_history(request.conversation_id)
         
@@ -187,8 +297,8 @@ async def chat(request: ChatRequest):
             add_message_to_history(request.conversation_id, "system", combined_prompt)
             history = get_conversation_history(request.conversation_id)
         
-        # 添加用户消息，包含权限等级信息
-        user_message_with_context = f"{request.message}\n[用户权限等级: {request.user_permission}]"
+        # 添加增强消息，包含权限等级信息
+        user_message_with_context = f"{enhanced_message}\n[用户权限等级: {request.user_permission}]"
         add_message_to_history(request.conversation_id, "user", user_message_with_context, request.user_id, request.user_name)
         history = get_conversation_history(request.conversation_id)
         
@@ -216,12 +326,20 @@ async def chat(request: ChatRequest):
             task_info = None
             ai_reply_clean += "\n\n⚠️ 检测到定时任务需求，但您的权限等级不足（需要60级或以上权限）。请联系管理员提升权限后再试。"
         
+        # 如果使用了RAG，添加来源信息
+        if rag_info and rag_info.get('used'):
+            sources = rag_info['sources'][:2]  # 显示前2个来源
+            source_text = ', '.join([s['title'] for s in sources])
+            ai_reply_clean += f"\n\n📚 参考来源: {source_text}"
+        
         # 添加清理后的AI回复到历史
         add_message_to_history(request.conversation_id, "assistant", ai_reply_clean)
         
         logger.info(f"AI回复用户 {request.user_id}: {ai_reply_clean[:50]}...")
         if task_info:
             logger.info(f"检测到定时任务: {task_info}")
+        if rag_info and rag_info.get('used'):
+            logger.info(f"使用RAG增强，置信度: {rag_info['confidence']}")
         
         return ChatResponse(reply=ai_reply_clean, success=True, task_info=task_info)
         
@@ -249,6 +367,80 @@ async def get_conversations():
     for conv_id, messages in conversation_store.items():
         conversations[conv_id] = len(messages)
     return {"conversations": conversations}
+
+@app.get("/rag/status", response_model=RAGStatusResponse)
+async def rag_status():
+    """获取RAG系统状态"""
+    try:
+        if not rag_system:
+            raise HTTPException(status_code=503, detail="RAG系统未初始化")
+        
+        vector_store = rag_system.vector_store
+        
+        # 获取向量数量
+        try:
+            collection = vector_store.client.get_collection(vector_store.collection_name)
+            vector_count = collection.count()
+        except:
+            vector_count = 0
+        
+        # 获取成本信息
+        cost_summary = cost_monitor.get_daily_summary()
+        
+        return RAGStatusResponse(
+            status="运行中" if vector_count > 0 else "未构建",
+            vector_count=vector_count,
+            last_update=cost_summary.get('date', 'unknown'),
+            model_version=config.EMBEDDING_MODEL
+        )
+        
+    except Exception as e:
+        logger.error(f"获取RAG状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/update", response_model=RAGUpdateResponse)
+async def rag_update():
+    """更新RAG知识库"""
+    try:
+        if not rag_system:
+            raise HTTPException(status_code=503, detail="RAG系统未初始化")
+        
+        logger.info("开始更新RAG知识库...")
+        
+        # 同步数据
+        data_sync = FiveToolsDataSync(config.FIVETOOLS_DATA_PATH)
+        if not data_sync.sync_data():
+            return RAGUpdateResponse(success=False, error="数据同步失败")
+        
+        # 处理数据
+        processor = FiveToolsProcessor()
+        data_files = data_sync.get_data_files()
+        documents = processor.process_all_data(data_files)
+        
+        # 构建索引
+        vector_store = FiveToolsVectorStore(config.VECTOR_DB_PATH)
+        if not vector_store.build_index(documents):
+            return RAGUpdateResponse(success=False, error="向量索引构建失败")
+        
+        # 更新全局实例
+        global rag_system
+        rag_system = FiveToolsRAG(vector_store)
+        
+        # 获取向量数量
+        collection = vector_store.client.get_collection(vector_store.collection_name)
+        vector_count = collection.count()
+        
+        logger.info(f"RAG知识库更新完成，处理{len(documents)}个文档，生成{vector_count}个向量")
+        
+        return RAGUpdateResponse(
+            success=True,
+            documents_processed=len(documents),
+            vectors_created=vector_count
+        )
+        
+    except Exception as e:
+        logger.error(f"更新RAG知识库失败: {e}")
+        return RAGUpdateResponse(success=False, error=str(e))
 
 if __name__ == "__main__":
     import uvicorn
