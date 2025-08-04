@@ -1,0 +1,30 @@
+[project]
+name = "sealdice-chat-backend"
+version = "0.1.0"
+description = "SealDice Chat Backend API"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn==0.24.0",
+    "dashscope",
+    "pydantic>=2.6.0",
+    "python-multipart==0.0.6",
+    "python-dotenv==1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]

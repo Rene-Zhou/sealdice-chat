@@ -2,9 +2,9 @@ module.exports = {
   apps: [
     {
       name: 'seal-dice-chatbot',
-      script: 'uvicorn',
-      args: 'main:app --host 0.0.0.0 --port 1478',
-      interpreter: 'python3',
+      script: './run_prod_uv.sh',
+      interpreter: '/usr/bin/bash',
+      cwd: '/home/rene/chat/sealdice-chat/backend',
       watch: false,
       autorestart: true,
       max_restarts: 10,
@@ -27,4 +27,4 @@ module.exports = {
       exec_mode: 'fork'
     }
   ]
-}; 
+};
