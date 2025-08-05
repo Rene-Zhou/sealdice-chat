@@ -4,7 +4,7 @@ module.exports = {
       name: 'seal-dice-chatbot',
       script: './run_prod_uv.sh',
       interpreter: '/usr/bin/bash',
-      cwd: '/home/rene/chat/sealdice-chat/backend',
+      cwd: './',
       watch: false,
       autorestart: true,
       max_restarts: 10,
