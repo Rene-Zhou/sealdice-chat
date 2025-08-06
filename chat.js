@@ -346,6 +346,11 @@ try {
 .chat help - 查看帮助信息
 .chat test - 测试AI服务连接
 
+角色系统：
+.chat chara list - 查看所有AI角色列表
+.chat chara set <角色名> - 切换AI扮演的角色
+.chat chara add <角色名> <描述> - 添加新的角色人设
+
 历史管理：
 .chat clear - 清除当前会话的对话历史
 .chat list - 查看所有对话列表和统计
@@ -640,6 +645,209 @@ try {
             
             default: {
               seal.replyToSender(ctx, msg, '❓ 无效的任务命令\n\n用法：\n.chat task - 查看帮助\n.chat task list - 查看任务列表\n.chat task clear - 清除所有任务');
+              return seal.ext.newCmdExecuteResult(true);
+            }
+          }
+        }
+
+        case 'chara':
+        case '角色':
+        case '人设': {
+          const arg2 = cmdArgs.getArgN(2) || '';
+          
+          switch (arg2) {
+            case 'list':
+            case 'ls':
+            case '列表':
+            case '查看': {
+              seal.replyToSender(ctx, msg, '正在获取角色列表...');
+              // 获取角色列表
+              (async () => {
+                try {
+                  const response = await fetch(`${CONFIG.API_BASE_URL}/characters`);
+                  
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.success && data.characters) {
+                      const characters = data.characters;
+                      const currentCharacter = data.current_character || 'default';
+                      
+                      if (Object.keys(characters).length === 0) {
+                        seal.replyToSender(ctx, msg, '暂无可用角色\n\n使用 .chat chara add <角色名> <角色描述> 添加新角色');
+                      } else {
+                        let listMsg = 'AI角色列表：\n\n';
+                        for (const [charId, character] of Object.entries(characters)) {
+                          const isCurrentChar = charId === currentCharacter;
+                          const marker = isCurrentChar ? '[当前] ' : '';
+                          
+                          listMsg += `${marker}[${charId}]\n`;
+                          listMsg += `${character.description}\n\n`;
+                        }
+                        listMsg += '命令说明：\n';
+                        listMsg += '.chat chara set <角色名> - 切换角色\n';
+                        listMsg += '.chat chara add <角色名> <描述> - 添加新角色';
+                        seal.replyToSender(ctx, msg, listMsg);
+                      }
+                    } else {
+                      seal.replyToSender(ctx, msg, '获取角色列表失败：响应格式错误');
+                    }
+                  } else {
+                    seal.replyToSender(ctx, msg, `获取角色列表失败：HTTP ${response.status}\n请检查后端服务状态`);
+                  }
+                } catch (error) {
+                  console.log('获取角色列表错误:', error);
+                  seal.replyToSender(ctx, msg, `获取角色列表失败\n错误：${error.message}\n请检查网络连接和后端服务`);
+                }
+              })();
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            case 'set':
+            case '切换':
+            case '设置': {
+              const characterName = cmdArgs.getArgN(3) || '';
+              if (!characterName) {
+                seal.replyToSender(ctx, msg, '请指定要切换的角色名\n\n用法：.chat chara set <角色名>\n例如：.chat chara set default\n\n使用 .chat chara list 查看可用角色');
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              seal.replyToSender(ctx, msg, `正在切换到角色：${characterName}...`);
+              // 切换角色
+              (async () => {
+                try {
+                  const setData = {
+                    character_name: characterName
+                  };
+                  
+                  const response = await fetch(`${CONFIG.API_BASE_URL}/characters/set`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(setData)
+                  });
+                  
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.success) {
+                      let successMsg = `${data.message}\n\n`;
+                      if (data.character) {
+                        successMsg += `角色简介：${data.character.description}\n\n`;
+                      }
+                      successMsg += '角色切换后，对话历史已自动清除，现在可以开始新的对话了！\n\n';
+                      successMsg += '使用 .chat <消息> 与新角色对话';
+                      seal.replyToSender(ctx, msg, successMsg);
+                    } else {
+                      const errorMsg = (data && data.message) || '切换失败';
+                      seal.replyToSender(ctx, msg, `切换角色失败：${errorMsg}`);
+                    }
+                  } else {
+                    seal.replyToSender(ctx, msg, `切换角色失败：HTTP ${response.status}\n请检查后端服务状态`);
+                  }
+                } catch (error) {
+                  console.log('切换角色错误:', error);
+                  seal.replyToSender(ctx, msg, `切换角色失败\n错误：${error.message}\n请检查网络连接和后端服务`);
+                }
+              })();
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            case 'add':
+            case '添加':
+            case '新增': {
+              const characterName = cmdArgs.getArgN(3) || '';
+              const characterDescription = cmdArgs.getArgN(4) || '';
+              
+              // 组合剩余参数作为描述（支持多个词语的描述）
+              let fullDescription = characterDescription;
+              for (let i = 5; i <= 15; i++) {
+                const part = cmdArgs.getArgN(i);
+                if (part) {
+                  fullDescription += ' ' + part;
+                } else {
+                  break;
+                }
+              }
+              
+              if (!characterName || !fullDescription) {
+                seal.replyToSender(ctx, msg, '请提供角色名和角色描述\n\n用法：.chat chara add <角色名> <角色描述>\n\n示例：\n.chat chara add wizard 你是一位博学的法师，精通各种魔法知识\n.chat chara add detective 你是一名敏锐的侦探，善于观察和推理\n\n角色描述会作为AI的系统提示词，决定AI的行为和回答风格');
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              if (characterName.length > 20) {
+                seal.replyToSender(ctx, msg, '角色名过长，请控制在20个字符以内\n当前长度：' + characterName.length);
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              if (fullDescription.length > 1000) {
+                seal.replyToSender(ctx, msg, '角色描述过长，请控制在1000个字符以内\n当前长度：' + fullDescription.length);
+                return seal.ext.newCmdExecuteResult(true);
+              }
+              
+              seal.replyToSender(ctx, msg, `正在添加新角色：${characterName}...`);
+              // 添加新角色
+              (async () => {
+                try {
+                  const addData = {
+                    character_name: characterName,
+                    character_description: fullDescription
+                  };
+                  
+                  const response = await fetch(`${CONFIG.API_BASE_URL}/characters/add`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(addData)
+                  });
+                  
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.success) {
+                      let successMsg = `${data.message}\n\n`;
+                      successMsg += `角色描述：${fullDescription}\n\n`;
+                      successMsg += '使用 .chat chara set ' + characterName + ' 切换到此角色\n';
+                      successMsg += '使用 .chat chara list 查看所有角色';
+                      seal.replyToSender(ctx, msg, successMsg);
+                    } else {
+                      const errorMsg = (data && data.message) || '添加失败';
+                      seal.replyToSender(ctx, msg, `添加角色失败：${errorMsg}`);
+                    }
+                  } else {
+                    seal.replyToSender(ctx, msg, `添加角色失败：HTTP ${response.status}\n请检查后端服务状态`);
+                  }
+                } catch (error) {
+                  console.log('添加角色错误:', error);
+                  seal.replyToSender(ctx, msg, `添加角色失败\n错误：${error.message}\n请检查网络连接和后端服务`);
+                }
+              })();
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            case '':
+            case 'help':
+            case '帮助': {
+              let charaHelpMsg = 'AI角色系统帮助\n\n';
+              charaHelpMsg += '可用命令：\n';
+              charaHelpMsg += '.chat chara list - 查看所有角色列表\n';
+              charaHelpMsg += '.chat chara set <角色名> - 切换AI角色\n';
+              charaHelpMsg += '.chat chara add <角色名> <描述> - 添加新角色\n\n';
+              charaHelpMsg += '使用示例：\n';
+              charaHelpMsg += '.chat chara list - 查看角色列表\n';
+              charaHelpMsg += '.chat chara set wizard - 切换到法师角色\n';
+              charaHelpMsg += '.chat chara add detective 你是一名敏锐的侦探\n\n';
+              charaHelpMsg += '功能说明：\n';
+              charaHelpMsg += '- 角色描述会作为AI的系统提示词\n';
+              charaHelpMsg += '- 切换角色后对话历史会自动清除\n';
+              charaHelpMsg += '- 每个角色有不同的行为和回答风格\n';
+              charaHelpMsg += '- 角色数据持久保存，重启后仍然可用';
+              
+              seal.replyToSender(ctx, msg, charaHelpMsg);
+              return seal.ext.newCmdExecuteResult(true);
+            }
+            
+            default: {
+              seal.replyToSender(ctx, msg, '无效的角色命令\n\n用法：\n.chat chara list - 查看角色列表\n.chat chara set <角色名> - 切换角色\n.chat chara add <角色名> <描述> - 添加角色\n.chat chara help - 查看帮助');
               return seal.ext.newCmdExecuteResult(true);
             }
           }

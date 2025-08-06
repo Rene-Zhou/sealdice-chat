@@ -6,6 +6,8 @@ SealDice Chat 后端API服务，基于FastAPI构建，集成阿里云DashScope A
 
 - FastAPI Web框架
 - 阿里云DashScope AI服务集成
+- 角色系统：支持动态AI人设管理
+- 智能定时任务：自然语言创建定时提醒
 - Pydantic数据验证
 - 环境变量配置管理
 - PM2生产环境部署支持
@@ -26,8 +28,10 @@ SealDice Chat 后端API服务，基于FastAPI构建，集成阿里云DashScope A
 POST /chat
 {
     "user_id": "用户ID",
+    "user_name": "用户名（可选）",
     "message": "用户消息",
-    "conversation_id": "对话ID（可选）"
+    "conversation_id": "对话ID（可选）",
+    "user_permission": "用户权限等级（数字）"
 }
 ```
 
@@ -35,7 +39,6 @@ POST /chat
 ```
 POST /clear_history
 {
-    "user_id": "用户ID",
     "conversation_id": "对话ID（可选）"
 }
 ```
@@ -45,9 +48,33 @@ POST /clear_history
 GET /health
 ```
 
-### 获取用户对话列表
+### 获取对话列表
 ```
-GET /conversations/{user_id}
+GET /conversations
+```
+
+### 角色管理
+
+#### 获取角色列表
+```
+GET /characters
+```
+
+#### 切换角色
+```
+POST /characters/set
+{
+    "character_name": "角色名"
+}
+```
+
+#### 添加新角色
+```
+POST /characters/add
+{
+    "character_name": "角色名",
+    "character_description": "角色描述"
+}
 ```
 
 ## 支持的模型
@@ -67,7 +94,7 @@ GET /conversations/{user_id}
 | PORT | 否 | 1478 | 服务器端口 |
 | MAX_CONVERSATION_HISTORY | 否 | 20 | 最大对话历史条数 |
 | MAX_MESSAGE_LENGTH | 否 | 2000 | 最大消息长度 |
-| SYSTEM_PROMPT | 否 | 默认提示 | 系统提示词 |
+| SYSTEM_PROMPT | 否 | 默认提示 | 系统提示词（已被角色系统替代，仅作为后备选项） |
 
 ## 开发工具
 
@@ -96,6 +123,7 @@ uv run flake8 .
 backend/
 ├── main.py              # 主应用入口
 ├── config.py            # 配置管理
+├── characters.json      # 角色系统数据文件
 ├── pyproject.toml       # 项目配置和依赖
 ├── uv.lock              # 依赖锁定文件
 ├── .python-version      # Python版本声明
