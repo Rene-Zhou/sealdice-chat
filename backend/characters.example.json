@@ -1,0 +1,11 @@
+{
+  "session_characters": {
+    "default": "伺服颅骨"
+  },
+  "characters": {
+    "default": {
+      "name": "默认助手",
+      "description": "你是一个友善的AI助手，正在参与TRPG（桌上角色扮演游戏）。请用简洁友好的语言回复用户的问题和对话。"
+    }
+  }
+}

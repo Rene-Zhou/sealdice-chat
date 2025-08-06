@@ -146,6 +146,12 @@ sealdice-chat/
 - **灵活配置**: 支持最多1000字的详细角色描述
 - **即时生效**: 角色切换立即生效，下次对话即使用新角色人设
 
+### 配置说明
+```
+cd backend
+cp characters.example.json characters.json # 复制角色配置文件
+```
+
 ### 使用说明
 1. **查看角色列表**: `.chat chara list` - 显示所有可用角色和当前激活角色
 2. **切换角色**: `.chat chara set <角色名>` - 切换到指定角色
