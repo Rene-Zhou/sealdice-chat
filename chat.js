@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AI聊天机器人 - 定时任务版
 // @author       Rene
-// @version      2.0.0
-// @description  群组共享对话历史的AI聊天机器人，支持用户识别、无指令聊天和智能定时任务
+// @version      2.1.0
+// @description  群组共享对话历史的AI聊天机器人，支持用户识别、无指令聊天、角色切换和智能定时任务
 // @license      Apache-2
 // @timestamp    1749902144
 // ==/UserScript==
@@ -17,6 +17,9 @@ AI聊天机器人插件 - 群组共享版本 v2.0.0
 - .chat list - 查看对话列表
 - .chat free [on/off] - 开关无指令聊天功能
 - .chat task list - 查看定时任务列表
+- .chat chara list - 查看角色列表
+- .chat chara set [character-name] - 切换角色
+- .chat chara add [new-character-name] [new-character-description] - 添加新角色
 
 特性：
 - 群组内所有成员共享对话历史
@@ -30,6 +33,9 @@ NEW v2.0.0:
 - 自然语言定时任务：AI能理解并创建定时任务
 - 权限管理：60级或以上权限才能创建定时任务
 - 任务管理：支持查看和管理定时任务
+
+NEW v2.1.0:
+- 角色系统：支持查看和管理角色列表，切换角色，添加新角色
 */
 
 try {
@@ -339,7 +345,7 @@ try {
   // 创建聊天指令
   const cmdChat = seal.ext.newCmdItemInfo();
   cmdChat.name = 'chat';
-  cmdChat.help = `AI聊天机器人 v2.0.0 - 基于阿里云通义千问 + 智能定时任务
+  cmdChat.help = `AI聊天机器人 v2.1.0
   
 基本功能：
 .chat <消息> - 与AI对话，支持连续对话上下文
@@ -360,52 +366,10 @@ try {
 .chat free on - 开启无指令聊天（@骰娘直接对话）
 .chat free off - 关闭无指令聊天
 
-定时任务（需要60级或以上权限）：
+定时任务（需要权限）：
 .chat task list - 查看已创建的定时任务
 .chat task clear - 清除所有定时任务
-
-使用示例：
-.chat 你好，请介绍一下TRPG
-.chat 帮我生成一个法师角色
-.chat 解释一下DND5E的先攻规则
-.chat 每天早上8点提醒我吃药 - 自然语言定时任务
-.chat 每5分钟提醒我休息 - 定时任务
-.chat clear - 清除历史重新开始
-.chat list - 查看所有对话
-.chat task list - 查看定时任务
-.chat free on - 开启@聊天功能
-@骰娘 你好 - 无指令聊天（需先开启）
-
-功能特性：
-• 智能对话：AI能记住对话历史，提供连续对话
-• 群组共享：同一群组所有成员共享对话历史
-• 用户识别：AI能识别不同用户的发言
-• 历史管理：支持清除对话历史和查看对话列表
-• 无指令聊天：支持@骰娘进行直接对话
-• 智能定时任务：AI能理解自然语言创建定时任务
-• 权限管理：60级或以上权限才能创建定时任务
-• TRPG专业：针对桌游场景优化的AI助手
-
-定时任务示例：
-• "每天早上8点提醒我起床" - 创建每日8:00提醒
-• "每小时提醒我喝水" - 创建每小时提醒
-• "每5分钟检查一下状态" - 创建每5分钟提醒
-• "每天晚上10点提醒我睡觉" - 创建每日22:00提醒
-
-工作原理：
-• 群组内所有成员共享同一个对话历史记录
-• 每个用户的消息都会标记用户身份
-• 私聊时每个用户有独立的对话历史
-• AI能够区分和回应不同用户的消息
-• AI智能识别定时任务需求并自动创建
-• 定时任务按时执行并发送提醒通知
-• 无指令聊天需要配置骰娘QQ号并开启功能
-
-技术支持：
-• 后端：Python FastAPI + 阿里云DashScope
-• 模型：通义千问系列（qwen-turbo/plus/max）
-• 定时任务：基于海豹核心定时任务API
-• 部署：支持开发和生产环境部署`;
+`;
 
   cmdChat.solve = (ctx, msg, cmdArgs) => {
     try {
@@ -664,7 +628,18 @@ try {
               // 获取角色列表
               (async () => {
                 try {
-                  const response = await fetch(`${CONFIG.API_BASE_URL}/characters`);
+                  const conversationId = getConversationId(ctx);
+                  const listData = {
+                    conversation_id: conversationId
+                  };
+                  
+                  const response = await fetch(`${CONFIG.API_BASE_URL}/characters`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(listData)
+                  });
                   
                   if (response.ok) {
                     const data = await response.json();
@@ -675,7 +650,7 @@ try {
                       if (Object.keys(characters).length === 0) {
                         seal.replyToSender(ctx, msg, '暂无可用角色\n\n使用 .chat chara add <角色名> <角色描述> 添加新角色');
                       } else {
-                        let listMsg = 'AI角色列表：\n\n';
+                        let listMsg = '当前会话AI角色列表：\n\n';
                         for (const [charId, character] of Object.entries(characters)) {
                           const isCurrentChar = charId === currentCharacter;
                           const marker = isCurrentChar ? '[当前] ' : '';
@@ -684,8 +659,9 @@ try {
                           listMsg += `${character.description}\n\n`;
                         }
                         listMsg += '命令说明：\n';
-                        listMsg += '.chat chara set <角色名> - 切换角色\n';
-                        listMsg += '.chat chara add <角色名> <描述> - 添加新角色';
+                        listMsg += '.chat chara set <角色名> - 切换当前会话的角色\n';
+                        listMsg += '.chat chara add <角色名> <描述> - 添加新角色\n\n';
+                        listMsg += '注意：角色切换仅影响当前会话，不会影响其他群组';
                         seal.replyToSender(ctx, msg, listMsg);
                       }
                     } else {
@@ -715,8 +691,10 @@ try {
               // 切换角色
               (async () => {
                 try {
+                  const conversationId = getConversationId(ctx);
                   const setData = {
-                    character_name: characterName
+                    character_name: characterName,
+                    conversation_id: conversationId
                   };
                   
                   const response = await fetch(`${CONFIG.API_BASE_URL}/characters/set`, {
@@ -734,7 +712,7 @@ try {
                       if (data.character) {
                         successMsg += `角色简介：${data.character.description}\n\n`;
                       }
-                      successMsg += '角色切换后，对话历史已自动清除，现在可以开始新的对话了！\n\n';
+                      successMsg += '当前会话的角色已切换，对话历史已自动清除，现在可以开始新的对话了！\n';
                       successMsg += '使用 .chat <消息> 与新角色对话';
                       seal.replyToSender(ctx, msg, successMsg);
                     } else {
@@ -838,7 +816,7 @@ try {
               charaHelpMsg += '.chat chara add detective 你是一名敏锐的侦探\n\n';
               charaHelpMsg += '功能说明：\n';
               charaHelpMsg += '- 角色描述会作为AI的系统提示词\n';
-              charaHelpMsg += '- 切换角色后对话历史会自动清除\n';
+              charaHelpMsg += '- 切换角色后当前会话的对话历史会自动清除\n';
               charaHelpMsg += '- 每个角色有不同的行为和回答风格\n';
               charaHelpMsg += '- 角色数据持久保存，重启后仍然可用';
               

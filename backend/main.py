@@ -39,11 +39,18 @@ def load_characters() -> Dict:
     try:
         if os.path.exists(CHARACTERS_FILE):
             with open(CHARACTERS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                # 兼容旧版本格式，如果存在current_character则转换为新格式
+                if "current_character" in data and "session_characters" not in data:
+                    logger.info("检测到旧版本角色数据格式，正在转换为会话级格式")
+                    old_current = data.pop("current_character", "default")
+                    data["session_characters"] = {"default": old_current}
+                    save_characters(data)
+                return data
         else:
             # 如果文件不存在，创建默认角色数据
             default_data = {
-                "current_character": "default",
+                "session_characters": {},  # 会话级角色映射
                 "characters": {
                     "default": {
                         "name": "默认助手",
@@ -57,7 +64,7 @@ def load_characters() -> Dict:
         logger.error(f"加载角色数据失败: {e}")
         # 返回默认数据
         return {
-            "current_character": "default", 
+            "session_characters": {},
             "characters": {
                 "default": {
                     "name": "默认助手",
@@ -76,12 +83,16 @@ def save_characters(data: Dict) -> bool:
         logger.error(f"保存角色数据失败: {e}")
         return False
 
-def get_current_character_description() -> str:
-    """获取当前角色的描述（系统提示词）"""
+def get_current_character_description(conversation_id: str = "default") -> str:
+    """获取指定会话的当前角色描述（系统提示词）"""
     try:
         data = load_characters()
-        current_char = data.get("current_character", "default")
+        session_characters = data.get("session_characters", {})
         characters = data.get("characters", {})
+        
+        # 获取该会话的当前角色，如果没有设置则使用default
+        current_char = session_characters.get(conversation_id, "default")
+        
         if current_char in characters:
             return characters[current_char]["description"]
         else:
@@ -90,6 +101,29 @@ def get_current_character_description() -> str:
     except Exception as e:
         logger.error(f"获取当前角色描述失败: {e}")
         return config.SYSTEM_PROMPT
+
+def get_session_current_character(conversation_id: str = "default") -> str:
+    """获取指定会话的当前角色名"""
+    try:
+        data = load_characters()
+        session_characters = data.get("session_characters", {})
+        return session_characters.get(conversation_id, "default")
+    except Exception as e:
+        logger.error(f"获取会话角色失败: {e}")
+        return "default"
+
+def set_session_character(conversation_id: str, character_name: str) -> bool:
+    """设置指定会话的角色"""
+    try:
+        data = load_characters()
+        if "session_characters" not in data:
+            data["session_characters"] = {}
+        
+        data["session_characters"][conversation_id] = character_name
+        return save_characters(data)
+    except Exception as e:
+        logger.error(f"设置会话角色失败: {e}")
+        return False
 
 class ChatRequest(BaseModel):
     user_id: str
@@ -116,19 +150,25 @@ class Character(BaseModel):
     name: str
     description: str
 
+class CharacterListRequest(BaseModel):
+    conversation_id: str = "default"
+
 class CharacterListResponse(BaseModel):
     success: bool
     characters: Dict[str, Character] = {}
     current_character: str = "default"
+    conversation_id: str = "default"
     error: Optional[str] = None
 
 class SetCharacterRequest(BaseModel):
     character_name: str
+    conversation_id: str = "default"
 
 class SetCharacterResponse(BaseModel):
     success: bool
     message: str
     character: Optional[Character] = None
+    conversation_id: str = "default"
     error: Optional[str] = None
 
 class AddCharacterRequest(BaseModel):
@@ -273,8 +313,8 @@ async def chat(request: ChatRequest):
         
         # 如果是新对话，添加系统提示
         if not history:
-            # 使用当前角色的描述组合任务检测提示
-            current_character_prompt = get_current_character_description()
+            # 使用该会话当前角色的描述组合任务检测提示
+            current_character_prompt = get_current_character_description(request.conversation_id)
             combined_prompt = current_character_prompt + "\n\n" + TASK_DETECTION_SYSTEM_PROMPT
             add_message_to_history(request.conversation_id, "system", combined_prompt)
             history = get_conversation_history(request.conversation_id)
@@ -342,8 +382,8 @@ async def get_conversations():
         conversations[conv_id] = len(messages)
     return {"conversations": conversations}
 
-@app.get("/characters", response_model=CharacterListResponse)
-async def get_characters():
+@app.post("/characters", response_model=CharacterListResponse)
+async def get_characters(request: CharacterListRequest):
     """获取角色列表"""
     try:
         data = load_characters()
@@ -354,18 +394,22 @@ async def get_characters():
                 description=char_data["description"]
             )
         
+        # 获取该会话的当前角色
+        current_character = get_session_current_character(request.conversation_id)
+        
         return CharacterListResponse(
             success=True,
             characters=characters,
-            current_character=data.get("current_character", "default")
+            current_character=current_character,
+            conversation_id=request.conversation_id
         )
     except Exception as e:
         logger.error(f"获取角色列表失败: {e}")
-        return CharacterListResponse(success=False, error=str(e))
+        return CharacterListResponse(success=False, error=str(e), conversation_id=request.conversation_id)
 
 @app.post("/characters/set", response_model=SetCharacterResponse)
 async def set_character(request: SetCharacterRequest):
-    """切换角色"""
+    """切换角色（会话级）"""
     try:
         data = load_characters()
         characters = data.get("characters", {})
@@ -374,18 +418,19 @@ async def set_character(request: SetCharacterRequest):
             return SetCharacterResponse(
                 success=False,
                 message=f"角色 '{request.character_name}' 不存在",
-                error="角色不存在"
+                error="角色不存在",
+                conversation_id=request.conversation_id
             )
         
-        # 更新当前角色
-        data["current_character"] = request.character_name
-        
-        if save_characters(data):
+        # 设置该会话的角色
+        if set_session_character(request.conversation_id, request.character_name):
             character_info = characters[request.character_name]
-            logger.info(f"成功切换到角色: {request.character_name}")
+            logger.info(f"会话 {request.conversation_id} 成功切换到角色: {request.character_name}")
             
-            # 清除所有对话历史，因为切换了角色
-            conversation_store.clear()
+            # 只清除当前会话的对话历史
+            if request.conversation_id in conversation_store:
+                conversation_store[request.conversation_id] = []
+                logger.info(f"已清除会话 {request.conversation_id} 的对话历史")
             
             return SetCharacterResponse(
                 success=True,
@@ -393,18 +438,20 @@ async def set_character(request: SetCharacterRequest):
                 character=Character(
                     name=character_info["name"],
                     description=character_info["description"]
-                )
+                ),
+                conversation_id=request.conversation_id
             )
         else:
             return SetCharacterResponse(
                 success=False,
                 message="保存角色设置失败",
-                error="保存失败"
+                error="保存失败",
+                conversation_id=request.conversation_id
             )
             
     except Exception as e:
         logger.error(f"切换角色失败: {e}")
-        return SetCharacterResponse(success=False, message="切换角色失败", error=str(e))
+        return SetCharacterResponse(success=False, message="切换角色失败", error=str(e), conversation_id=request.conversation_id)
 
 @app.post("/characters/add", response_model=AddCharacterResponse)
 async def add_character(request: AddCharacterRequest):
